@@ -70,7 +70,6 @@ const KalshiArena = () => {
       setError(null);
       setLoading(true);
       
-      // Fetch markets directly (not events)
       const response = await fetch('https://api.elections.kalshi.com/trade-api/v2/markets', {
         method: 'GET',
         headers: {
@@ -86,7 +85,6 @@ const KalshiArena = () => {
       console.log('Kalshi API Response:', data);
       
       if (data.markets && Array.isArray(data.markets) && data.markets.length > 0) {
-        // Get unique events from markets
         const eventsMap = new Map();
         
         data.markets.forEach(market => {
@@ -108,7 +106,6 @@ const KalshiArena = () => {
           });
         });
         
-        // Convert map to array and add AI model predictions
         const eventsArray = Array.from(eventsMap.values()).slice(0, 12).map(event => ({
           ...event,
           aiPredictions: generateModelPredictions(event)
@@ -129,7 +126,6 @@ const KalshiArena = () => {
   const generateModelPredictions = (event) => {
     const models = ['GPT-4o', 'Claude 3.5 Sonnet', 'Gemini 2.0 Flash', 'o1', 'Llama 3.3', 'Grok'];
     
-    // Base predictions on actual market data if available
     const basePrice = event.markets && event.markets.length > 0 
       ? event.markets[0].yes_price 
       : 0.5;
@@ -361,37 +357,29 @@ const KalshiArena = () => {
                 Retry Connection
               </button>
             </div>
-          ) : activeTab === 'markets' ? (
-            filteredMarkets.length > 0 ? (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {filteredMarkets.map((event, idx) => (
-                  <MarketCard key={idx} event={event} />
-                ))}
-              </div>
-            ) : (
-              <div className="bg-white rounded-xl border border-gray-200 p-8 text-center">
-                <p className="text-gray-600">No markets found matching your search.</p>
-              </div>
-            )
-          <TabsContent value="leaderboard">
-            {loading ? (
-              <div className="flex flex-col items-center justify-center py-20">
-                <div className="w-12 h-12 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin mb-4"></div>
-                <p className="text-gray-600">Loading Kalshi markets...</p>
-              </div>
-            ) : error ? (
-              <div className="bg-white rounded-xl border border-red-200 p-8 text-center">
-                <p className="text-red-600 mb-4 text-lg font-medium">{error}</p>
-                <button
-                  onClick={fetchKalshiMarkets}
-                  className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium"
-                >
-                  Retry Connection
-                </button>
-              </div>
-            ) : (
-              <Leaderboard />
-            )}
-          </TabsContent>
+          ) : (
+            <div>
+              {activeTab === 'markets' && (
+                filteredMarkets.length > 0 ? (
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    {filteredMarkets.map((event, idx) => (
+                      <MarketCard key={idx} event={event} />
+                    ))}
+                  </div>
+                ) : (
+                  <div className="bg-white rounded-xl border border-gray-200 p-8 text-center">
+                    <p className="text-gray-600">No markets found matching your search.</p>
+                  </div>
+                )
+              )}
+              
+              {activeTab === 'leaderboard' && <Leaderboard />}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
 
 ReactDOM.render(<KalshiArena />, document.getElementById('root'));
