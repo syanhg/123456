@@ -55,7 +55,7 @@ const ModelLogo = ({ modelName, size = 'default' }) => {
 
 // Main App Component
 const KalshiArena = () => {
-  const [events, setEvents] = useState([]);
+  const [markets, setMarkets] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [activeTab, setActiveTab] = useState('markets');
@@ -70,7 +70,8 @@ const KalshiArena = () => {
       setError(null);
       setLoading(true);
       
-      const response = await fetch('https://api.elections.kalshi.com/trade-api/v2/events', {
+      // Fetch markets directly (not events)
+      const response = await fetch('https://api.elections.kalshi.com/trade-api/v2/markets', {
         method: 'GET',
         headers: {
           'Accept': 'application/json'
@@ -78,23 +79,48 @@ const KalshiArena = () => {
       });
       
       if (!response.ok) {
-        throw new Error(`API returned ${response.status}`);
+        throw new Error(`API error: ${response.status}`);
       }
 
       const data = await response.json();
+      console.log('Kalshi API Response:', data);
       
-      if (data.events && data.events.length > 0) {
-        const transformedEvents = data.events.slice(0, 12).map(event => ({
+      if (data.markets && Array.isArray(data.markets) && data.markets.length > 0) {
+        // Get unique events from markets
+        const eventsMap = new Map();
+        
+        data.markets.forEach(market => {
+          const eventTicker = market.event_ticker;
+          if (!eventsMap.has(eventTicker)) {
+            eventsMap.set(eventTicker, {
+              event_ticker: eventTicker,
+              title: market.title || market.subtitle || eventTicker,
+              category: market.category || 'General',
+              close_time: market.close_time,
+              markets: []
+            });
+          }
+          
+          eventsMap.get(eventTicker).markets.push({
+            ticker: market.ticker,
+            yes_price: market.yes_bid || market.last_price || 0.5,
+            volume: market.volume || 0
+          });
+        });
+        
+        // Convert map to array and add AI model predictions
+        const eventsArray = Array.from(eventsMap.values()).slice(0, 12).map(event => ({
           ...event,
-          markets: generateModelPredictions(event)
+          aiPredictions: generateModelPredictions(event)
         }));
-        setEvents(transformedEvents);
+        
+        setMarkets(eventsArray);
       } else {
-        throw new Error('No events data received');
+        throw new Error('No markets data received from API');
       }
     } catch (err) {
       console.error('Error fetching Kalshi markets:', err);
-      setError('Unable to fetch Kalshi data. Please try again later.');
+      setError(`Unable to fetch Kalshi data: ${err.message}`);
     } finally {
       setLoading(false);
     }
@@ -102,45 +128,55 @@ const KalshiArena = () => {
 
   const generateModelPredictions = (event) => {
     const models = ['GPT-4o', 'Claude 3.5 Sonnet', 'Gemini 2.0 Flash', 'o1', 'Llama 3.3', 'Grok'];
+    
+    // Base predictions on actual market data if available
+    const basePrice = event.markets && event.markets.length > 0 
+      ? event.markets[0].yes_price 
+      : 0.5;
+    
     return models.map(model => ({
       ticker: model,
-      yes_price: 0.3 + Math.random() * 0.5,
+      yes_price: Math.max(0.1, Math.min(0.9, basePrice + (Math.random() - 0.5) * 0.3)),
       volume: Math.floor(Math.random() * 1000000) + 100000
     }));
   };
 
-  const getTopPredictions = (markets) => {
-    if (!markets || markets.length === 0) return [];
-    return markets.sort((a, b) => b.yes_price - a.yes_price).slice(0, 4);
+  const getTopPredictions = (predictions) => {
+    if (!predictions || predictions.length === 0) return [];
+    return [...predictions].sort((a, b) => b.yes_price - a.yes_price).slice(0, 4);
   };
 
   const formatDate = (dateString) => {
     if (!dateString) return 'Active';
-    const date = new Date(dateString);
-    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    try {
+      const date = new Date(dateString);
+      return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    } catch {
+      return 'Active';
+    }
   };
 
   const getLeaderboardData = () => {
-    const allMarkets = events.flatMap(event => 
-      (event.markets || []).map(market => ({
-        ticker: market.ticker,
+    const allPredictions = markets.flatMap(event => 
+      (event.aiPredictions || []).map(pred => ({
+        ticker: pred.ticker,
         eventTitle: event.title,
-        probability: Math.round(market.yes_price * 100),
-        volume: market.volume || 0,
+        probability: Math.round(pred.yes_price * 100),
+        volume: pred.volume || 0,
         category: event.category || 'General'
       }))
     );
-    return allMarkets.sort((a, b) => b.volume - a.volume).slice(0, 15);
+    return allPredictions.sort((a, b) => b.volume - a.volume).slice(0, 15);
   };
 
-  const filteredEvents = events.filter(event =>
+  const filteredMarkets = markets.filter(event =>
     event.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
     (event.category && event.category.toLowerCase().includes(searchTerm.toLowerCase())) ||
     event.event_ticker.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   const MarketCard = ({ event }) => {
-    const topPredictions = getTopPredictions(event.markets);
+    const topPredictions = getTopPredictions(event.aiPredictions);
     
     return (
       <div className="bg-white rounded-xl border border-gray-200 shadow-sm hover:shadow-lg transition-all duration-200">
@@ -158,12 +194,12 @@ const KalshiArena = () => {
           </div>
           
           <div className="space-y-3 mb-4">
-            <p className="text-sm font-medium text-gray-600">Top predictions:</p>
-            {topPredictions.map((market, idx) => (
+            <p className="text-sm font-medium text-gray-600">AI Model Predictions:</p>
+            {topPredictions.map((pred, idx) => (
               <div key={idx} className="flex items-center justify-between">
-                <span className="text-sm text-gray-700">{market.ticker}</span>
+                <span className="text-sm text-gray-700">{pred.ticker}</span>
                 <span className="text-sm font-semibold text-blue-600">
-                  {Math.round(market.yes_price * 100)}%
+                  {Math.round(pred.yes_price * 100)}%
                 </span>
               </div>
             ))}
@@ -191,7 +227,7 @@ const KalshiArena = () => {
         <div className="px-6 py-4 bg-gradient-to-r from-yellow-50 to-orange-50 border-b border-gray-200">
           <div className="flex items-center gap-3">
             <TrophyIcon />
-            <h2 className="text-xl font-bold text-gray-900">Top Predictions by Volume</h2>
+            <h2 className="text-xl font-bold text-gray-900">Top AI Predictions by Volume</h2>
           </div>
         </div>
         
@@ -256,7 +292,7 @@ const KalshiArena = () => {
       <div className="max-w-7xl mx-auto px-4 py-8">
         <div className="mb-8">
           <h1 className="text-4xl font-bold text-gray-900 mb-2">AI Model Prediction Arena</h1>
-          <p className="text-lg text-gray-600">Compare AI model predictions on real-world events powered by Kalshi</p>
+          <p className="text-lg text-gray-600">Compare AI model predictions on real Kalshi prediction markets</p>
         </div>
 
         <div className="mb-6">
@@ -266,7 +302,7 @@ const KalshiArena = () => {
             </div>
             <input
               type="text"
-              placeholder="Search events by title, topic, ticker, or markets..."
+              placeholder="Search markets by title, topic, or category..."
               className="w-full pl-11 pr-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
@@ -303,8 +339,9 @@ const KalshiArena = () => {
 
         <div className="mt-6">
           {loading ? (
-            <div className="flex items-center justify-center py-20">
-              <div className="w-12 h-12 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin"></div>
+            <div className="flex flex-col items-center justify-center py-20">
+              <div className="w-12 h-12 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin mb-4"></div>
+              <p className="text-gray-600">Loading Kalshi markets...</p>
             </div>
           ) : error ? (
             <div className="bg-white rounded-xl border border-red-200 p-8 text-center">
@@ -313,13 +350,13 @@ const KalshiArena = () => {
                 onClick={fetchKalshiMarkets}
                 className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium"
               >
-                Retry
+                Retry Connection
               </button>
             </div>
           ) : activeTab === 'markets' ? (
-            filteredEvents.length > 0 ? (
+            filteredMarkets.length > 0 ? (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {filteredEvents.map((event, idx) => (
+                {filteredMarkets.map((event, idx) => (
                   <MarketCard key={idx} event={event} />
                 ))}
               </div>
