@@ -222,6 +222,14 @@ const KalshiArena = () => {
   const Leaderboard = () => {
     const leaderboardData = getLeaderboardData();
 
+    if (leaderboardData.length === 0) {
+      return (
+        <div className="bg-white rounded-xl border border-gray-200 p-8 text-center">
+          <p className="text-gray-600">No leaderboard data available.</p>
+        </div>
+      );
+    }
+
     return (
       <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
         <div className="px-6 py-4 bg-gradient-to-r from-yellow-50 to-orange-50 border-b border-gray-200">
@@ -365,13 +373,25 @@ const KalshiArena = () => {
                 <p className="text-gray-600">No markets found matching your search.</p>
               </div>
             )
-          ) : (
-            <Leaderboard />
-          )}
-        </div>
-      </div>
-    </div>
-  );
-};
+          <TabsContent value="leaderboard">
+            {loading ? (
+              <div className="flex flex-col items-center justify-center py-20">
+                <div className="w-12 h-12 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin mb-4"></div>
+                <p className="text-gray-600">Loading Kalshi markets...</p>
+              </div>
+            ) : error ? (
+              <div className="bg-white rounded-xl border border-red-200 p-8 text-center">
+                <p className="text-red-600 mb-4 text-lg font-medium">{error}</p>
+                <button
+                  onClick={fetchKalshiMarkets}
+                  className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium"
+                >
+                  Retry Connection
+                </button>
+              </div>
+            ) : (
+              <Leaderboard />
+            )}
+          </TabsContent>
 
 ReactDOM.render(<KalshiArena />, document.getElementById('root'));
